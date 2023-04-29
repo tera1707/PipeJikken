@@ -8,14 +8,12 @@ namespace PipeJikkenKai
     internal class Program
     {
         private static CancellationTokenSource? _cancelServer;
-        private static CancellationTokenSource? _cancelClient;
 
         static async Task Main(string[] args)
         {
             _cancelServer = new CancellationTokenSource();
-            _cancelClient = new CancellationTokenSource();
 
-            var pipe = new PipeConnect();
+            using var pipe = new PipeConnect();
 
             ConsoleWriteLine("-----実験開始-----");
 

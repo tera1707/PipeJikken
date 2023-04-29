@@ -3,14 +3,18 @@ using System.IO.Pipes;
 using System.Security.Principal;
 
 namespace PipeJikken
-{    public class PipeConnect
+{    public class PipeConnect :IDisposable
     {
-        private static readonly int recvPipeThreadMax = 1;
+        private static readonly int RecvPipeThreadMax = 1;
+        private CancellationTokenSource _lifetimeCts = new CancellationTokenSource();
+        private bool disposedValue;
 
         // パイプから受信を行う処理
         // 送信(クライアント)側が切断(close)すると、IOExceptionが来るので再度パイプサーバー作成しなおしする。
         public Task CreateServerAsync(string pipeName, Action<string> onRecv, CancellationToken ct = default)
         {
+            var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetimeCts.Token);
+
             return Task.Run(async () =>
             {
                 while (true)
@@ -18,11 +22,11 @@ namespace PipeJikken
                     try
                     {
                         // 同じパイプに対しての接続は1件まで
-                        using (var pipeServer = new NamedPipeServerStream(pipeName, PipeDirection.InOut, recvPipeThreadMax, PipeTransmissionMode.Byte, PipeOptions.Asynchronous))
+                        using (var pipeServer = new NamedPipeServerStream(pipeName, PipeDirection.InOut, RecvPipeThreadMax, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly))
                         {
                             // クライアントの接続待ち
                             ConsoleWriteLine($"受信：クライアントの接続待ち開始");
-                            await pipeServer.WaitForConnectionAsync(ct);
+                            await pipeServer.WaitForConnectionAsync(combinedCts.Token);
 
                             ConsoleWriteLine($"受信：StreamReader");
                             using (var reader = new StreamReader(pipeServer))
@@ -46,7 +50,7 @@ namespace PipeJikken
                     catch (OperationCanceledException oce)
                     {
                         // パイプサーバーのキャンセル要求(OperationCanceledExceptionをthrowしてTaskが終わると、Taskは「Cancel」扱いになる)
-                        ConsoleWriteLine("受信：パイプサーバーのキャンセル要求がきました");
+                        ConsoleWriteLine($"受信：パイプサーバーのキャンセル要求がきました。{oce.GetType()}");
                         throw;
                     }
                     finally
@@ -84,5 +88,39 @@ namespace PipeJikken
         {
             Debug.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} {log}");
         }
+
+        #region IDisposable
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    // TODO: マネージド状態を破棄します (マネージド オブジェクト)
+                    _lifetimeCts.Cancel();
+                }
+
+                // TODO: アンマネージド リソース (アンマネージド オブジェクト) を解放し、ファイナライザーをオーバーライドします
+                // TODO: 大きなフィールドを null に設定します
+                disposedValue = true;
+            }
+        }
+
+        // // TODO: 'Dispose(bool disposing)' にアンマネージド リソースを解放するコードが含まれる場合にのみ、ファイナライザーをオーバーライドします
+        // ~PipeConnect()
+        // {
+        //     // このコードを変更しないでください。クリーンアップ コードを 'Dispose(bool disposing)' メソッドに記述します
+        //     Dispose(disposing: false);
+        // }
+
+        public void Dispose()
+        {
+            // このコードを変更しないでください。クリーンアップ コードを 'Dispose(bool disposing)' メソッドに記述します
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
+
+        #endregion
     }
 }
