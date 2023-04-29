@@ -3,7 +3,8 @@ using System.IO.Pipes;
 using System.Security.Principal;
 
 namespace PipeJikken
-{    public class PipeConnect :IDisposable
+{
+    public class PipeConnect :IDisposable, IPipeConnect
     {
         private static readonly int RecvPipeThreadMax = 1;
         private CancellationTokenSource _lifetimeCts = new CancellationTokenSource();
