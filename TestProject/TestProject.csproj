@@ -1,13 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net6.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
     <IsPackable>false</IsPackable>
 
     <Platforms>x64</Platforms>
+	<SelfContained>true</SelfContained>
+	<RuntimeIdentifier>win10-x64</RuntimeIdentifier>
   </PropertyGroup>
 
   <ItemGroup>
