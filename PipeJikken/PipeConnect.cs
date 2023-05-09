@@ -68,17 +68,24 @@ namespace PipeJikken
         {
             await Task.Run(async () =>
             {
-                using (var pipeClient = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly, TokenImpersonationLevel.Impersonation))
+                try
                 {
-                    await pipeClient.ConnectAsync(1000);
-
-                    using (var writer = new StreamWriter(pipeClient))
+                    using (var pipeClient = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly, TokenImpersonationLevel.Impersonation))
                     {
-                        await writer.WriteLineAsync(writeString);
-                        writer.Flush();
+                        await pipeClient.ConnectAsync(1000);
 
-                        ConsoleWriteLine(" 送信完了");
+                        using (var writer = new StreamWriter(pipeClient))
+                        {
+                            await writer.WriteLineAsync(writeString);
+                            writer.Flush();
+
+                            ConsoleWriteLine(" 送信完了");
+                        }
                     }
+                }
+                catch (TimeoutException te)
+                {
+                    ConsoleWriteLine(te.Message);
                 }
 
                 ConsoleWriteLine(" 送信：パイプ終了");

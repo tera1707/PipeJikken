@@ -1,0 +1,19 @@
+﻿<Window x:Class="PipeJikkenWPF.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:PipeJikkenWPF"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="450" Width="800">
+    <StackPanel>
+        <Button Content="サーバー起動" Click="Button_Click"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+            <TextBox x:Name="SendData" Text="SoushinData" Width="300"/>
+            <Button Content="クライアントで送信" Click="Button_Click_1" />
+        </StackPanel>
+
+        <ListBox x:Name="DataList"/>
+    </StackPanel>
+</Window>
