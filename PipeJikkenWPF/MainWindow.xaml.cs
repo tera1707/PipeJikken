@@ -1,20 +1,19 @@
 ﻿using PipeJikken;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Markup;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
+
+// ■使い方
+// 
+// ・サーバー用アプリ起動(①)、クライアント用アプリ起動(②)
+// ・①で「サーバー起動」を押して、名前付きパイプサーバーを立ち上げる
+// ・②で「クライアント作成」を押して、名前付きパイプサーバーにクライアントを接続しに行く
+// ・②で「クライアントで送信」を押して、データ送る
+// ・あとは、「クライアントで送信」を押すと、連続してデータを送れる
+// 
+// ・②を閉じると、①側も一度パイプサーバーを終了する
+// ・もう一度接続する際は、再度①の「サーバー起動」を押して、名前付きパイプサーバーを立ち上げる。あとは上と同じ。
+// 
+
 
 namespace PipeJikkenWPF
 {
@@ -37,20 +36,33 @@ namespace PipeJikkenWPF
         {
             var id = Process.GetCurrentProcess().SessionId;
 
-            _pc?.CreateServerAsync(@"_pipename_" + id, (data =>
+            _pc.CreatePipeServer(@"_pipename_" + id);
+
+            _pc?.StartServerAsync((data =>
             {
+                // 応答を送信
+                _pc?.SendString("aiueo");
+
                 // クライアントから受信した文言
                 this.Dispatcher.Invoke(() => { DataList.Items.Add(data); });
             }));
+
+        }
+
+        // クライアントを作成
+        private async void Button_Click_2(object sender, RoutedEventArgs e)
+        {
+            var id = Process.GetCurrentProcess().SessionId;
+
+            await _pc!.CreatePipeClient(@"_pipename_" + id);
+
         }
 
         // クライアントで送信
         private void Button_Click_1(object sender, RoutedEventArgs e)
         {
-            var id = Process.GetCurrentProcess().SessionId;
-
             var send = SendData.Text;
-            _pc?.CreateClientAsync(@"_pipename_" + id, send, (response) =>
+            _pc?.StartClientAsync(send, (response) =>
             {
                 // サーバーからの応答文言
                 this.Dispatcher.Invoke(() => { DataList.Items.Add(response); });

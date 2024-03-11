@@ -24,10 +24,10 @@ namespace TestProject
                 Debug.WriteLine("-----実験開始-----");
 
                 // 受信Pipeサーバー立ち上げ
-                _ = pipe.CreateServerAsync(pipeName, OnRecv, _cancelServer.Token);
+                _ = pipe.StartServerAsync(pipeName, OnRecv, _cancelServer.Token);
 
                 // 送信
-                await pipe.CreateClientAsync(pipeName, sendString);
+                await pipe.StartClientAsync(pipeName, sendString);
                 await Task.Delay(2000);
 
                 Assert.AreEqual(sendString, recvString);
@@ -51,9 +51,9 @@ namespace TestProject
 
             using (var pipe = new PipeConnect())
             {
-                var recvTask = pipe.CreateServerAsync(pipeName, ((recvString) => { }), _cancelServer.Token);
+                var recvTask = pipe.StartServerAsync(pipeName, ((recvString) => { }), _cancelServer.Token);
 
-                await pipe.CreateClientAsync(pipeName, sendString);
+                await pipe.StartClientAsync(pipeName, sendString);
 
                 await Task.Delay(1000);
 
@@ -62,7 +62,7 @@ namespace TestProject
                 await Task.Delay(1000);
 
                 // キャンセルした後の送信ができないことを見る
-                await Assert.ThrowsExceptionAsync<TimeoutException>(() => pipe.CreateClientAsync(pipeName, "AAA"));
+                await Assert.ThrowsExceptionAsync<TimeoutException>(() => pipe.StartClientAsync(pipeName, "AAA"));
 
                 //recvTaskの例外がOperationCancelledExceptionであることの確認
                 try
@@ -88,9 +88,9 @@ namespace TestProject
 
             var pipe = new PipeConnect();
             
-            var recvTask = pipe.CreateServerAsync(pipeName, ((recvString) => { }), _cancelServer.Token);
+            var recvTask = pipe.StartServerAsync(pipeName, ((recvString) => { }), _cancelServer.Token);
 
-            await pipe.CreateClientAsync(pipeName, sendString);
+            await pipe.StartClientAsync(pipeName, sendString);
             
             await Task.Delay(1000);
 
@@ -99,7 +99,7 @@ namespace TestProject
             await Task.Delay(1000);
 
             // キャンセルした後の送信ができないことを見る
-            await Assert.ThrowsExceptionAsync<TimeoutException>(() => pipe.CreateClientAsync(pipeName, "AAA"));
+            await Assert.ThrowsExceptionAsync<TimeoutException>(() => pipe.StartClientAsync(pipeName, "AAA"));
 
             //recvTaskの例外がOperationCancelledExceptionであることの確認
             try
@@ -127,12 +127,12 @@ namespace TestProject
             using var pipe = new PipeConnect();
 
             // 受信Pipeサーバー立ち上げ
-            _ = pipe.CreateServerAsync(pipeName, OnRecv, _cancelServer.Token);
+            _ = pipe.StartServerAsync(pipeName, OnRecv, _cancelServer.Token);
 
             for (int i = 0; i < 100; i++)
             {
                 // 送信
-                await pipe.CreateClientAsync(pipeName, sendString + i.ToString());
+                await pipe.StartClientAsync(pipeName, sendString + i.ToString());
             }
 
             for (int i = 0; i < 100; i++)

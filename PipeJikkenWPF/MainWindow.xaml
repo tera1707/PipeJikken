@@ -12,6 +12,7 @@
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
             <TextBox x:Name="SendData" Text="SoushinData" Width="300"/>
+            <Button Content="クライアント作成" Click="Button_Click_2" />
             <Button Content="クライアントで送信" Click="Button_Click_1" />
         </StackPanel>
 

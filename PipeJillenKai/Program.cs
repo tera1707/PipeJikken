@@ -21,12 +21,12 @@ namespace PipeJikkenKai
 
             // 受信Pipeサーバー立ち上げ
 
-            _ = pipe.CreateServerAsync(pipeName, ((recvString) => { }), _cancelServer.Token);
+            _ = pipe.StartServerAsync(pipeName, ((recvString) => { }), _cancelServer.Token);
 
             // 送信
-            await pipe.CreateClientAsync(pipeName, "送る文字列１");
+            await pipe.StartClientAsync(pipeName, "送る文字列１");
             await Task.Delay(2000);
-            await pipe.CreateClientAsync(pipeName, "送る文字列２");
+            await pipe.StartClientAsync(pipeName, "送る文字列２");
             await Task.Delay(2000);
 
             // キャンセル(サーバーを終了させる)
@@ -38,7 +38,7 @@ namespace PipeJikkenKai
             // キャンセルした後の送信ができないことを見る
             try
             {
-                await pipe.CreateClientAsync(pipeName, "送る文字列３");
+                await pipe.StartClientAsync(pipeName, "送る文字列３");
             }
             catch(Exception ex)
             {
