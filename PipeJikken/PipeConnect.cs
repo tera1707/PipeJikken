@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.IO.Pipes;
 using System.Security.Principal;
+using System.Text;
 
 namespace PipeJikken
 {
@@ -23,23 +24,24 @@ namespace PipeJikken
                     try
                     {
                         // 同じパイプに対しての接続は1件まで
-                        using (var pipeServer = new NamedPipeServerStream(pipeName, PipeDirection.InOut, RecvPipeThreadMax, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly))
+                        using (var pipeServer = new NamedPipeServerStream(pipeName, PipeDirection.InOut, RecvPipeThreadMax, PipeTransmissionMode.Byte, PipeOptions.CurrentUserOnly))
                         {
-                            // クライアントの接続待ち
-                            ConsoleWriteLine($"受信：クライアントの接続待ち開始");
-                            await pipeServer.WaitForConnectionAsync(combinedCts.Token);
+                            // クライアントからの接続を待つ
+                            Debug.WriteLine("Waiting for connection...");
+                            pipeServer.WaitForConnection();
 
-                            ConsoleWriteLine($"受信：StreamReader");
-                            using (var reader = new StreamReader(pipeServer))
-                            {
-                                // 受信待ち
-                                ConsoleWriteLine($"受信：読み込み開始");
-                                var recvString = await reader.ReadLineAsync();
+                            // クライアントからのメッセージを受け取る
+                            byte[] buffer = new byte[256];
+                            int bytesRead = pipeServer.Read(buffer, 0, buffer.Length);
+                            string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                            Debug.WriteLine("Server Received: {0}", message);
 
-                                ConsoleWriteLine($"受信：受信文字列：{recvString ?? "null"}");
+                            onRecv?.Invoke(message);
 
-                                onRecv.Invoke(recvString ?? "null");
-                            }
+                            // クライアントに応答を送信
+                            var response = "Server response string.";
+                            byte[] responseBytes = Encoding.UTF8.GetBytes(response);
+                            pipeServer.Write(responseBytes, 0, responseBytes.Length);
                         }
                     }
                     catch (IOException ofex)
@@ -64,23 +66,30 @@ namespace PipeJikken
 
         // パイプに対して送信を行う処理
         // 1件送信するごとに、パイプ接続→切断するタイプ。
-        public async Task CreateClientAsync(string pipeName, string writeString)
+        public async Task CreateClientAsync(string pipeName, string writeString, Action<string>? onRecvResponse = default)
         {
             await Task.Run(async () =>
             {
                 try
                 {
-                    using (var pipeClient = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly, TokenImpersonationLevel.Impersonation))
+                    using (var pipeClient = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.CurrentUserOnly, TokenImpersonationLevel.Impersonation))
                     {
+                        // クライアントからの接続を待つ
+                        Debug.WriteLine("Waiting for connection...");
                         await pipeClient.ConnectAsync(1000);
 
-                        using (var writer = new StreamWriter(pipeClient))
-                        {
-                            await writer.WriteLineAsync(writeString);
-                            writer.Flush();
+                        // クライアントに応答を送信
+                        var response = "Client Message string.";
+                        byte[] responseBytes = Encoding.UTF8.GetBytes(response);
+                        pipeClient.Write(responseBytes, 0, responseBytes.Length);
 
-                            ConsoleWriteLine(" 送信完了");
-                        }
+                        // クライアントからのメッセージを受け取る
+                        var buffer = new byte[256];
+                        int bytesRead = pipeClient.Read(buffer, 0, buffer.Length);
+                        string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                        Debug.WriteLine("Client Received: {0}", message);
+
+                        onRecvResponse?.Invoke(message);
                     }
                 }
                 catch (TimeoutException te)

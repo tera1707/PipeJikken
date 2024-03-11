@@ -10,6 +10,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
@@ -37,8 +38,8 @@ namespace PipeJikkenWPF
             var id = Process.GetCurrentProcess().SessionId;
 
             _pc?.CreateServerAsync(@"_pipename_" + id, (data =>
-            //_pc?.CreateServerAsync(@"_pipename_", (data => 
             {
+                // クライアントから受信した文言
                 this.Dispatcher.Invoke(() => { DataList.Items.Add(data); });
             }));
         }
@@ -49,8 +50,17 @@ namespace PipeJikkenWPF
             var id = Process.GetCurrentProcess().SessionId;
 
             var send = SendData.Text;
-            _pc?.CreateClientAsync(@"_pipename_" + id, send);
+            _pc?.CreateClientAsync(@"_pipename_" + id, send, (response) =>
+            {
+                // サーバーからの応答文言
+                this.Dispatcher.Invoke(() => { DataList.Items.Add(response); });
+            });
             //_pc?.CreateClientAsync(@"_pipename_", send);
+        }
+
+        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            _pc?.Dispose();
         }
     }
 }
