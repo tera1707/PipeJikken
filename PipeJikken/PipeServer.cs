@@ -1,0 +1,129 @@
+﻿using System.Diagnostics;
+using System.IO.Pipes;
+using System.Text;
+
+namespace PipeJikken
+{
+    public class PipeServer : IDisposable, IPipeServer
+    {
+        private static readonly int RecvPipeThreadMax = 1;
+        private NamedPipeServerStream? pipeServer;
+
+        private CancellationTokenSource _lifetimeCts = new CancellationTokenSource();
+        private bool disposedValue;
+
+        public void Create(string pipeName)
+        {
+            pipeServer = new NamedPipeServerStream(pipeName, PipeDirection.InOut, RecvPipeThreadMax, PipeTransmissionMode.Byte, PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous);
+        }
+
+        // パイプサーバーを起動する処理
+        public Task StartAsync(Action<string> onRecv, CancellationToken ct = default)
+        {
+            if (pipeServer is not null && pipeServer.IsConnected)
+                return Task.CompletedTask;//すでに接続中
+
+            var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetimeCts.Token);
+
+            return Task.Run(async () =>
+            {
+                // クライアントからの接続を待つ
+                await pipeServer!.WaitForConnectionAsync(combinedCts.Token);
+
+                while (true)
+                {
+                    try
+                    {
+                        // クライアントからのメッセージを受け取る
+                        var message = await RecvString();
+
+                        if (message == string.Empty)
+                        {
+                            // 空文字(受信バイト数が0)の場合は、接続がクライアントから切られた
+                            // →一度接続を切る
+                            pipeServer?.Dispose();
+                            pipeServer = null;
+                            throw new TaskCanceledException("クライアントから切断されました。");
+                        }
+
+                        // 受信時処理を実行
+                        onRecv?.Invoke(message);
+                    }
+                    finally
+                    {
+                        ConsoleWriteLine("受信：パイプ終了");
+                    }
+                }
+            });
+        }
+
+        public async Task<string> RecvString()
+        {
+            return await Task.Run(() =>
+            {
+                byte[] buffer = new byte[256];
+                int bytesRead = pipeServer!.Read(buffer, 0, buffer.Length);
+                string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                Debug.WriteLine("Server Received: {0}", message);
+
+                return message;
+            });
+        }
+
+        public async Task SendString(string sendData)
+        {
+            await Task.Run(() =>
+            {
+                // クライアントに応答を送信
+                var response = "Server response string.";
+                byte[] responseBytes = Encoding.UTF8.GetBytes(response);
+                pipeServer?.Write(responseBytes, 0, responseBytes.Length);
+            });
+        }
+
+        private static void ConsoleWriteLine(string log)
+        {
+            Debug.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} {log}");
+        }
+
+        #region IDisposable
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    // TODO: マネージド状態を破棄します (マネージド オブジェクト)
+                    _lifetimeCts.Cancel();
+                }
+
+                if (pipeServer is not null)
+                {
+                    pipeServer.Dispose();
+                    pipeServer = null;
+                }
+
+                // TODO: アンマネージド リソース (アンマネージド オブジェクト) を解放し、ファイナライザーをオーバーライドします
+                // TODO: 大きなフィールドを null に設定します
+                disposedValue = true;
+            }
+        }
+
+        // // TODO: 'Dispose(bool disposing)' にアンマネージド リソースを解放するコードが含まれる場合にのみ、ファイナライザーをオーバーライドします
+        // ~PipeConnect()
+        // {
+        //     // このコードを変更しないでください。クリーンアップ コードを 'Dispose(bool disposing)' メソッドに記述します
+        //     Dispose(disposing: false);
+        // }
+
+        public void Dispose()
+        {
+            // このコードを変更しないでください。クリーンアップ コードを 'Dispose(bool disposing)' メソッドに記述します
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
+
+        #endregion
+    }
+}

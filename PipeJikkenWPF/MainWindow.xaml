@@ -8,12 +8,16 @@
         Title="MainWindow" Height="450" Width="800"
         Closing="Window_Closing">
     <StackPanel>
-        <Button Content="サーバー起動" Click="Button_Click"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+            <Button Content="サーバー起動" Click="Button_Click" Width="300"/>
+            <Button Content="サーバー終了" Click="Button_Click_3" Width="300"/>
+        </StackPanel>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
             <TextBox x:Name="SendData" Text="SoushinData" Width="300"/>
             <Button Content="クライアント作成" Click="Button_Click_2" />
             <Button Content="クライアントで送信" Click="Button_Click_1" />
+            <Button Content="クライアント終了" Click="Button_Click_4" />
         </StackPanel>
 
         <ListBox x:Name="DataList"/>

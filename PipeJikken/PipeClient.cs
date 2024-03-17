@@ -5,98 +5,14 @@ using System.Text;
 
 namespace PipeJikken
 {
-    public class PipeConnect :IDisposable, IPipeConnect
+
+    public class PipeClient : IDisposable, IPipeClient
     {
-        private static readonly int RecvPipeThreadMax = 1;
+        private NamedPipeClientStream? pipeClient;
         private CancellationTokenSource _lifetimeCts = new CancellationTokenSource();
         private bool disposedValue;
 
-        private NamedPipeServerStream? pipeServer;
-        private NamedPipeClientStream? pipeClient;
-
-        // --------------------------------------------------------------
-        // サーバー
-        // --------------------------------------------------------------
-
-        public void CreatePipeServer(string pipeName)
-        {
-            pipeServer = new NamedPipeServerStream(pipeName, PipeDirection.InOut, RecvPipeThreadMax, PipeTransmissionMode.Byte, PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous);
-        }
-
-        // パイプサーバーを起動する処理
-        public Task StartServerAsync(Action<string> onRecv, CancellationToken ct = default)
-        {
-            if (pipeServer is not null && pipeServer.IsConnected)
-                return Task.CompletedTask;//すでに接続中
-
-            var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetimeCts.Token);
-
-            return Task.Run(async () =>
-            {
-                // クライアントからの接続を待つ
-                await pipeServer!.WaitForConnectionAsync(combinedCts.Token);
-
-                while (true)
-                {
-                    try
-                    {
-                        // クライアントからのメッセージを受け取る
-                        var message = await RecvString();
-
-                        if (message == string.Empty)
-                        {
-                            // 空文字(受信バイト数が0)の場合は、接続がクライアントから切られた
-                            // →一度接続を切る
-                            pipeServer?.Dispose();
-                            pipeServer = null;
-                            break;
-                        }
-
-                        // 受信時処理を実行
-                        onRecv?.Invoke(message);
-                    }
-                    catch (Exception ex)
-                    {
-                        ConsoleWriteLine(ex.Message);
-                    }
-                    finally
-                    {
-                        ConsoleWriteLine("受信：パイプ終了");
-                    }
-                }
-            });
-        }
-
-        public async Task<string> RecvString()
-        {
-            return await Task.Run(() =>
-            {
-                byte[] buffer = new byte[256];
-                int bytesRead = pipeServer!.Read(buffer, 0, buffer.Length);
-                string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                Debug.WriteLine("Server Received: {0}", message);
-
-                return message;
-            });
-        }
-
-        public async Task SendString(string sendData)
-        {
-            await Task.Run(() =>
-            {
-                // クライアントに応答を送信
-                var response = "Server response string.";
-                byte[] responseBytes = Encoding.UTF8.GetBytes(response);
-                pipeServer?.Write(responseBytes, 0, responseBytes.Length);
-            });
-        }
-
-
-        // --------------------------------------------------------------
-        // クライアント
-        // --------------------------------------------------------------
-
-        public async Task CreatePipeClient(string pipeName)
+        public async Task Create(string pipeName)
         {
             if (pipeClient is not null && pipeClient.IsConnected)
                 return;//すでに接続中
@@ -118,7 +34,7 @@ namespace PipeJikken
 
         // パイプに対して送信を行う処理
         // 1件送信するごとに、パイプ接続→切断するタイプ。
-        public async Task StartClientAsync(string writeString, Action<string>? onRecvResponse = default)
+        public async Task SendAsync(string writeString, Action<string>? onRecvResponse = default)
         {
             if (pipeClient is null)
                 throw new InvalidOperationException("PipeClientがnullです");
@@ -157,10 +73,6 @@ namespace PipeJikken
                     pipeClient = null;
                     ConsoleWriteLine(ioe.Message);
                 }
-                catch (Exception ex)
-                {
-                    ConsoleWriteLine(ex.Message);
-                }
 
                 ConsoleWriteLine(" 送信：パイプ終了");
             });
@@ -187,11 +99,6 @@ namespace PipeJikken
                 {
                     pipeClient.Dispose();
                     pipeClient = null;
-                }
-                if (pipeServer is not null)
-                {
-                    pipeServer.Dispose();
-                    pipeServer = null;
                 }
 
                 // TODO: アンマネージド リソース (アンマネージド オブジェクト) を解放し、ファイナライザーをオーバーライドします
