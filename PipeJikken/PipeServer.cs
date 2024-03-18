@@ -57,6 +57,7 @@ namespace PipeJikken
             });
         }
 
+        // 受信処理
         public async Task<string> RecvString()
         {
             return await Task.Run(() =>
@@ -70,15 +71,14 @@ namespace PipeJikken
             });
         }
 
+        // 送信処理（主にクライアント受信時の応答の送信を想定）
         public async Task SendString(string sendData)
         {
-            await Task.Run(() =>
-            {
-                // クライアントに応答を送信
-                var response = "Server response string.";
-                byte[] responseBytes = Encoding.UTF8.GetBytes(response);
-                pipeServer?.Write(responseBytes, 0, responseBytes.Length);
-            });
+            CancellationTokenSource cts = new CancellationTokenSource();
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
+            // クライアントに応答を送信
+            byte[] responseBytes = Encoding.UTF8.GetBytes(sendData);
+            await pipeServer!.WriteAsync(responseBytes, 0, responseBytes.Length, cts.Token);
         }
 
         private static void ConsoleWriteLine(string log)

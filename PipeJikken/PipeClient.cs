@@ -47,8 +47,7 @@ namespace PipeJikken
                     cts.CancelAfter(TimeSpan.FromSeconds(5));
 
                     // クライアントに応答を送信
-                    var response = "Client Message string.";
-                    byte[] responseBytes = Encoding.UTF8.GetBytes(response);
+                    byte[] responseBytes = Encoding.UTF8.GetBytes(writeString);
                     await pipeClient.WriteAsync(responseBytes, 0, responseBytes.Length, cts.Token);//PipeOptions.Asynchronous を設定しておかないと、cancelできない！
 
                     // クライアントからのメッセージを受け取る
