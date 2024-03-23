@@ -30,6 +30,8 @@ namespace PipeJikkenWPF
         public MainWindow()
         {
             InitializeComponent();
+            _pipeServer = new PipeServer();
+            _pipeClient = new PipeClient();
         }
 
         // サーバー起動
@@ -40,31 +42,27 @@ namespace PipeJikkenWPF
             // 複数ユーザーがログインしているときに、全く同じ名前のパイプを作って衝突しないようにセッションIDをパイプ名に付ける
             var id = Process.GetCurrentProcess().SessionId;
 
-            if (_pipeServer is not null)
-                return;
-
-            _pipeServer = new PipeServer();
-
             _pipeServer.Create(@"_pipename_" + id);
 
-            var recvTask = _pipeServer.StartAsync(async data =>
+            var recvTask = _pipeServer.StartAsync(data =>
             {
-                // 応答を送信
-                await _pipeServer.SendString("Ack");
-
                 // クライアントから受信した文言
-                this.Dispatcher.Invoke(() => { DataList.Items.Add(data); });
+                this.Dispatcher.Invoke(async () =>
+                {
+                    if (ResponseCheck.IsChecked == true)
+                    {
+                        // 応答を送信
+                        await _pipeServer.SendString("Ack");
+                    }
+
+                    DataList.Items.Add(data);                 
+                });
             });
 
             // 受信スレッドは、dispose時にキャンセルされる
             recvTask.ContinueWith(task =>
             {
                 Debug.WriteLine($"task.Status = {task.Status}" ); // →status＝Cancelのはず
-                if (_pipeServer != null)
-                {
-                    _pipeServer.Dispose();
-                    _pipeServer = null;
-                }
             });
         }
 
@@ -81,11 +79,6 @@ namespace PipeJikkenWPF
             this.Title = "Client.";
 
             var id = Process.GetCurrentProcess().SessionId;
-
-            if (_pipeClient is not null)
-                return;
-
-            _pipeClient = new PipeClient();
 
             await _pipeClient.Create(@"_pipename_" + id);
         }

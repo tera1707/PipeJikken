@@ -11,6 +11,7 @@
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
             <Button Content="サーバー起動" Click="Button_Click" Width="300"/>
             <Button Content="サーバー終了" Click="Button_Click_3" Width="300"/>
+            <CheckBox Name="ResponseCheck" Content="Response" IsChecked="True"/>
         </StackPanel>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">

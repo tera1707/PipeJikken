@@ -1,5 +1,7 @@
 ﻿using System.Diagnostics;
+using System.IO;
 using System.IO.Pipes;
+using System.Reflection.PortableExecutable;
 using System.Text;
 
 namespace PipeJikken
@@ -7,7 +9,11 @@ namespace PipeJikken
     public class PipeServer : IDisposable, IPipeServer
     {
         private static readonly int RecvPipeThreadMax = 1;
+        private static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(1);
         private NamedPipeServerStream? pipeServer;
+
+        private StreamWriter? streamWriter;
+        private StreamReader? streamReader;
 
         private CancellationTokenSource _lifetimeCts = new CancellationTokenSource();
         private bool disposedValue;
@@ -15,13 +21,19 @@ namespace PipeJikken
         public void Create(string pipeName)
         {
             pipeServer = new NamedPipeServerStream(pipeName, PipeDirection.InOut, RecvPipeThreadMax, PipeTransmissionMode.Byte, PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous);
+
+            streamWriter = new StreamWriter(pipeServer, Encoding.UTF8);
+            streamReader = new StreamReader(pipeServer, Encoding.UTF8);
         }
 
         // パイプサーバーを起動する処理
         public Task StartAsync(Action<string> onRecv, CancellationToken ct = default)
         {
             if (pipeServer is not null && pipeServer.IsConnected)
-                return Task.CompletedTask;//すでに接続中
+            {
+                ConsoleWriteLine("クライアントがすでに接続中です。");
+                return Task.CompletedTask;
+            }
 
             var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetimeCts.Token);
 
@@ -29,20 +41,28 @@ namespace PipeJikken
             {
                 // クライアントからの接続を待つ
                 await pipeServer!.WaitForConnectionAsync(combinedCts.Token);
+                ConsoleWriteLine("クライアントに接続されました。");
 
                 while (true)
                 {
                     try
                     {
                         // クライアントからのメッセージを受け取る
+                        ConsoleWriteLine("受信待ち開始");
                         var message = await RecvString();
 
-                        if (message == string.Empty)
+                        if (message == null)
                         {
-                            // 空文字(受信バイト数が0)の場合は、接続がクライアントから切られた
+                            // nullの場合は、接続がクライアントから切られた
                             // →一度接続を切る
+                            streamWriter?.Dispose();
+                            streamWriter = null;
+                            streamReader?.Dispose();
+                            streamReader = null;
                             pipeServer?.Dispose();
                             pipeServer = null;
+
+                            ConsoleWriteLine("クライアントから切断されました。");
                             throw new TaskCanceledException("クライアントから切断されました。");
                         }
 
@@ -51,34 +71,39 @@ namespace PipeJikken
                     }
                     finally
                     {
-                        ConsoleWriteLine("受信：パイプ終了");
+                        ConsoleWriteLine("受信完了");
                     }
                 }
             });
         }
 
         // 受信処理
-        public async Task<string> RecvString()
+        public async Task<string?> RecvString()
         {
-            return await Task.Run(() =>
-            {
-                byte[] buffer = new byte[256];
-                int bytesRead = pipeServer!.Read(buffer, 0, buffer.Length);
-                string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                Debug.WriteLine("Server Received: {0}", message);
+            if (streamReader is null)
+                throw new InvalidOperationException();
 
-                return message;
+            return await Task.Run(async () =>
+            {
+                var recvString = await streamReader.ReadLineAsync();
+                Debug.WriteLine($"受信：{recvString}");
+
+                return recvString;
             });
         }
 
         // 送信処理（主にクライアント受信時の応答の送信を想定）
-        public async Task SendString(string sendData)
+        public async Task SendString(string sendString)
         {
+            if (streamWriter is null)
+                throw new InvalidOperationException();
+
             CancellationTokenSource cts = new CancellationTokenSource();
-            cts.CancelAfter(TimeSpan.FromSeconds(5));
+            cts.CancelAfter(SendTimeout);
+
             // クライアントに応答を送信
-            byte[] responseBytes = Encoding.UTF8.GetBytes(sendData);
-            await pipeServer!.WriteAsync(responseBytes, 0, responseBytes.Length, cts.Token);
+            await streamWriter.WriteLineAsync(sendString.ToCharArray(), cts.Token);
+            streamWriter.Flush();
         }
 
         private static void ConsoleWriteLine(string log)
@@ -100,6 +125,10 @@ namespace PipeJikken
 
                 if (pipeServer is not null)
                 {
+                    streamWriter?.Dispose();
+                    streamWriter = null;
+                    streamReader?.Dispose();
+                    streamReader = null;
                     pipeServer.Dispose();
                     pipeServer = null;
                 }
