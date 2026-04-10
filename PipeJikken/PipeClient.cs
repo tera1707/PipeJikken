@@ -27,7 +27,7 @@ public class PipeClient : IDisposable, IPipeClient
         if (pipeClient is not null && pipeClient.IsConnected)
             return;//すでに接続中
 
-        pipeClient = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous, TokenImpersonationLevel.Impersonation);
+        pipeClient = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous, TokenImpersonationLevel.Impersonation);
 
         try
         {
@@ -35,8 +35,8 @@ public class PipeClient : IDisposable, IPipeClient
             await pipeClient.ConnectAsync(ConnectTimeoutMilliseconds);
             ConsoleWriteLine("接続しました");
 
-            streamWriter = new StreamWriter(pipeClient, Encoding.UTF8);
-            streamReader = new StreamReader(pipeClient, Encoding.UTF8);
+            streamWriter = new StreamWriter(pipeClient, new UTF8Encoding(false));
+            streamReader = new StreamReader(pipeClient, new UTF8Encoding(false));
         }
         catch (TimeoutException toe)
         {
@@ -75,7 +75,7 @@ public class PipeClient : IDisposable, IPipeClient
 
                 var buffer = new char[1024];
                 var bytesRead = await streamReader.ReadAsync(buffer, cts.Token); // →.NET7からは、ReadLineAsync()にcts.Tokenを受ける奴が追加されるのでそれ使えばよい
-                var line = buffer.Take(5).ToArray()!;
+                var line = buffer.Take(bytesRead).ToArray()!;
                 var payload = new string(line).TrimEnd('\r', '\n');
 
                 ConsoleWriteLine($"応答受信完了：{payload}");
