@@ -45,10 +45,10 @@ public partial class MainWindow : Window
         this.Title = "Server.";
 
         // 複数ユーザーがログインしているときに、全く同じ名前のパイプを作って衝突しないようにセッションIDをパイプ名に付ける
-        var id = Process.GetCurrentProcess().SessionId;
+        //var id = Process.GetCurrentProcess().SessionId;
 
         _pipeServer = new PipeServer();
-        _pipeServer.Create(@"_pipename_" + id);
+        _pipeServer.Create(PipeNameTextBox.Text);
 
         var recvTask = _pipeServer.StartAsync(data =>
         {
@@ -84,10 +84,10 @@ public partial class MainWindow : Window
     {
         this.Title = "Client.";
 
-        var id = Process.GetCurrentProcess().SessionId;
+        //var id = Process.GetCurrentProcess().SessionId;
 
         _pipeClient = new PipeClient();
-        await _pipeClient.Create(@"_pipename_" + id);
+        await _pipeClient.Create(PipeNameTextBox.Text);
     }
 
     // クライアントで送信
