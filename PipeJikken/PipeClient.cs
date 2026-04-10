@@ -40,6 +40,8 @@ public class PipeClient : IDisposable, IPipeClient
         }
         catch (TimeoutException toe)
         {
+            pipeClient.Dispose();
+            pipeClient = null;
             ConsoleWriteLine("接続タイムアウト、何もせず終了します");
             ConsoleWriteLine(toe.Message);// 接続時にタイムアウトした場合はなにもしない
         }
@@ -49,7 +51,10 @@ public class PipeClient : IDisposable, IPipeClient
     public async Task SendAsync(string writeString, Action<string>? onRecvResponse = default)
     {
         if (pipeClient is null || streamWriter is null || streamReader is null)
-            throw new InvalidOperationException("PipeClientがnullです");
+        {
+            ConsoleWriteLine("パイプクライアントが未接続です。");
+            return;
+        }
 
         if (isSending)
             return;//送信中に送信要求来たらなにもしない
@@ -107,11 +112,14 @@ public class PipeClient : IDisposable, IPipeClient
 
                 ConsoleWriteLine(ioe.Message);
             }
-
+            finally
+            {
+            }
             ConsoleWriteLine(" 送信：パイプ終了");
+        }).ContinueWith((t)=>
+        {
+            isSending = false;
         });
-
-        isSending = false;
     }
 
     private static void ConsoleWriteLine(string log)
