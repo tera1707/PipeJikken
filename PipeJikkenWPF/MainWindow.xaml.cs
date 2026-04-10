@@ -1,6 +1,7 @@
 ﻿using PipeJikken;
 using System;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using System.Windows;
 
 // ■使い方
@@ -23,8 +24,8 @@ namespace PipeJikkenWPF
     /// </summary>
     public partial class MainWindow : Window
     {
-        PipeServer _pipeServer;
-        PipeClient _pipeClient;
+        PipeServer? _pipeServer;
+        PipeClient? _pipeClient;
 
 
         public MainWindow()
@@ -87,6 +88,12 @@ namespace PipeJikkenWPF
         // クライアントで送信
         private void Button_Click_1(object sender, RoutedEventArgs e)
         {
+            if (_pipeClient is null)
+            {
+                Debug.WriteLine($"パイプクライアントを作成してください。");
+                return;
+            }
+
             var send = SendData.Text;
             _ = _pipeClient.SendAsync(send, (response) =>
             {
@@ -98,6 +105,12 @@ namespace PipeJikkenWPF
         // クライアント終了
         private void Button_Click_4(object sender, RoutedEventArgs e)
         {
+            if (_pipeClient is null)
+            {
+                Debug.WriteLine($"すでにパイプクライアントは破棄されています。");
+                return;
+            }
+
             _pipeClient?.Dispose();
             _pipeClient = null;
         }
