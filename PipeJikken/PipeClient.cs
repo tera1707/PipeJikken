@@ -1,125 +1,170 @@
 ﻿using System.Diagnostics;
 using System.IO.Pipes;
+using System.Reflection.PortableExecutable;
 using System.Security.Principal;
 using System.Text;
 
-namespace PipeJikken
+namespace PipeJikken;
+
+
+public class PipeClient : IDisposable, IPipeClient
 {
+    private NamedPipeClientStream? pipeClient;
 
-    public class PipeClient : IDisposable, IPipeClient
+    private static readonly int ConnectTimeoutMilliseconds = 1000;
+    private static readonly int SendTimeoutSeconds = 1;
+
+    private StreamWriter? streamWriter;
+    private StreamReader? streamReader;
+
+    private CancellationTokenSource _lifetimeCts = new CancellationTokenSource();
+    private bool disposedValue;
+
+    private bool isSending = false;
+
+    public async Task Create(string pipeName)
     {
-        private NamedPipeClientStream? pipeClient;
-        private CancellationTokenSource _lifetimeCts = new CancellationTokenSource();
-        private bool disposedValue;
+        if (pipeClient is not null && pipeClient.IsConnected)
+            return;//すでに接続中
 
-        public async Task Create(string pipeName)
+        pipeClient = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous, TokenImpersonationLevel.Impersonation);
+
+        try
         {
-            if (pipeClient is not null && pipeClient.IsConnected)
-                return;//すでに接続中
+            ConsoleWriteLine("接続開始");
+            await pipeClient.ConnectAsync(ConnectTimeoutMilliseconds);
+            ConsoleWriteLine("接続しました");
 
-            pipeClient = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous, TokenImpersonationLevel.Impersonation);
+            streamWriter = new StreamWriter(pipeClient, Encoding.UTF8);
+            streamReader = new StreamReader(pipeClient, Encoding.UTF8);
+        }
+        catch (TimeoutException toe)
+        {
+            pipeClient.Dispose();
+            pipeClient = null;
+            ConsoleWriteLine("接続タイムアウト、何もせず終了します");
+            ConsoleWriteLine(toe.Message);// 接続時にタイムアウトした場合はなにもしない
+        }
+    }
 
-            // クライアントからの接続を待つ
-            Debug.WriteLine("Waiting for connection...");
+    // パイプに対して送信を行う処理
+    public async Task SendAsync(string writeString, Action<string>? onRecvResponse = default)
+    {
+        if (pipeClient is null || streamWriter is null || streamReader is null)
+        {
+            ConsoleWriteLine("パイプクライアントが未接続です。");
+            return;
+        }
 
+        if (isSending)
+            return;//送信中に送信要求来たらなにもしない
+
+        isSending = true;
+
+        await Task.Run(async () =>
+        {
             try
             {
-                await pipeClient.ConnectAsync(1000);
+                using var cts = new CancellationTokenSource();
+                cts.CancelAfter(TimeSpan.FromSeconds(SendTimeoutSeconds));
+
+                await streamWriter.WriteLineAsync(writeString.ToCharArray(), cts.Token);
+                streamWriter.Flush();
+
+                ConsoleWriteLine("送信完了、応答待ち開始");
+
+                var buffer = new char[1024];
+                var bytesRead = await streamReader.ReadAsync(buffer, cts.Token); // →.NET7からは、ReadLineAsync()にcts.Tokenを受ける奴が追加されるのでそれ使えばよい
+                var line = buffer.Take(5).ToArray()!;
+                var payload = new string(line).TrimEnd('\r', '\n');
+
+                ConsoleWriteLine($"応答受信完了：{payload}");
+
+                onRecvResponse?.Invoke(payload);
             }
-            catch (TimeoutException toe)
+            catch (TimeoutException te)
             {
-                ConsoleWriteLine(toe.Message);// 接続時にタイムアウトした場合はなにもしない
+                ConsoleWriteLine(te.Message);
             }
-        }
-
-        // パイプに対して送信を行う処理
-        // 1件送信するごとに、パイプ接続→切断するタイプ。
-        public async Task SendAsync(string writeString, Action<string>? onRecvResponse = default)
-        {
-            if (pipeClient is null)
-                throw new InvalidOperationException("PipeClientがnullです");
-
-            await Task.Run(async () =>
+            catch (OperationCanceledException oce)
             {
-                try
-                {
-                    using var cts = new CancellationTokenSource();
-                    cts.CancelAfter(TimeSpan.FromSeconds(5));
+                streamWriter?.Dispose();
+                streamWriter = null;
 
-                    // クライアントに応答を送信
-                    byte[] responseBytes = Encoding.UTF8.GetBytes(writeString);
-                    await pipeClient.WriteAsync(responseBytes, 0, responseBytes.Length, cts.Token);//PipeOptions.Asynchronous を設定しておかないと、cancelできない！
+                streamReader?.Dispose();
+                streamReader = null;
 
-                    // クライアントからのメッセージを受け取る
-                    var buffer = new byte[256];
-                    int bytesRead = await pipeClient.ReadAsync(buffer, 0, buffer.Length, cts.Token);
-                    string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                    Debug.WriteLine($"Client Received: {0}", message);
+                pipeClient?.Dispose();
+                pipeClient = null;
 
-                    onRecvResponse?.Invoke(message);
-                }
-                catch (TimeoutException te)
-                {
-                    ConsoleWriteLine(te.Message);
-                }
-                catch (OperationCanceledException oce)
-                {
-                    ConsoleWriteLine(oce.Message);
-                }
-                catch (IOException ioe)
-                {
-                    pipeClient?.Dispose();
-                    pipeClient = null;
-                    ConsoleWriteLine(ioe.Message);
-                }
-
-                ConsoleWriteLine(" 送信：パイプ終了");
-            });
-        }
-
-        private static void ConsoleWriteLine(string log)
-        {
-            Debug.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} {log}");
-        }
-
-        #region IDisposable
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (!disposedValue)
-            {
-                if (disposing)
-                {
-                    // TODO: マネージド状態を破棄します (マネージド オブジェクト)
-                    _lifetimeCts.Cancel();
-                }
-
-                if (pipeClient is not null)
-                {
-                    pipeClient.Dispose();
-                    pipeClient = null;
-                }
-
-                // TODO: アンマネージド リソース (アンマネージド オブジェクト) を解放し、ファイナライザーをオーバーライドします
-                // TODO: 大きなフィールドを null に設定します
-                disposedValue = true;
+                ConsoleWriteLine(oce.Message);
             }
-        }
+            catch (IOException ioe)
+            {
+                streamWriter?.Dispose();
+                streamWriter = null;
 
-        // // TODO: 'Dispose(bool disposing)' にアンマネージド リソースを解放するコードが含まれる場合にのみ、ファイナライザーをオーバーライドします
-        // ~PipeConnect()
-        // {
-        //     // このコードを変更しないでください。クリーンアップ コードを 'Dispose(bool disposing)' メソッドに記述します
-        //     Dispose(disposing: false);
-        // }
+                streamReader?.Dispose();
+                streamReader = null;
 
-        public void Dispose()
+                pipeClient?.Dispose();
+                pipeClient = null;
+
+                ConsoleWriteLine(ioe.Message);
+            }
+            finally
+            {
+            }
+            ConsoleWriteLine(" 送信：パイプ終了");
+        }).ContinueWith((t)=>
         {
-            // このコードを変更しないでください。クリーンアップ コードを 'Dispose(bool disposing)' メソッドに記述します
-            Dispose(disposing: true);
-            GC.SuppressFinalize(this);
-        }
-
-        #endregion
+            isSending = false;
+        });
     }
+
+    private static void ConsoleWriteLine(string log)
+    {
+        Debug.WriteLine($"{DateTime.Now.ToString("HH:mm:ss.fff")} {log}");
+    }
+
+    #region IDisposable
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!disposedValue)
+        {
+            if (disposing)
+            {
+                // TODO: マネージド状態を破棄します (マネージド オブジェクト)
+                _lifetimeCts.Cancel();
+            }
+
+            streamWriter?.Dispose();
+            streamWriter = null;
+
+            streamReader?.Dispose();
+            streamReader = null;
+
+            pipeClient?.Dispose();
+            pipeClient = null;
+
+            disposedValue = true;
+        }
+    }
+
+    // // TODO: 'Dispose(bool disposing)' にアンマネージド リソースを解放するコードが含まれる場合にのみ、ファイナライザーをオーバーライドします
+    // ~PipeConnect()
+    // {
+    //     // このコードを変更しないでください。クリーンアップ コードを 'Dispose(bool disposing)' メソッドに記述します
+    //     Dispose(disposing: false);
+    // }
+
+    public void Dispose()
+    {
+        // このコードを変更しないでください。クリーンアップ コードを 'Dispose(bool disposing)' メソッドに記述します
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    #endregion
 }

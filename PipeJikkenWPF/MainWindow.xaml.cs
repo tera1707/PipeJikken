@@ -1,7 +1,9 @@
 ﻿using PipeJikken;
 using System;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Markup;
 
 // ■使い方
 // 
@@ -16,110 +18,121 @@ using System.Windows;
 // 
 
 
-namespace PipeJikkenWPF
+namespace PipeJikkenWPF;
+
+/// <summary>
+/// Interaction logic for MainWindow.xaml
+/// </summary>
+public partial class MainWindow : Window
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
-    public partial class MainWindow : Window
+    PipeServer? _pipeServer;
+    PipeClient? _pipeClient;
+
+    public MainWindow()
     {
-        PipeServer _pipeServer;
-        PipeClient _pipeClient;
+        InitializeComponent();
+    }
 
-
-        public MainWindow()
+    // サーバー起動
+    private void Button_Click(object sender, RoutedEventArgs e)
+    {
+        if (_pipeServer is not null)
         {
-            InitializeComponent();
+            Debug.WriteLine($"すでにパイプサーバーが作成されています。");
+            return;
         }
 
-        // サーバー起動
-        private void Button_Click(object sender, RoutedEventArgs e)
+        this.Title = "Server.";
+
+        // 複数ユーザーがログインしているときに、全く同じ名前のパイプを作って衝突しないようにセッションIDをパイプ名に付ける
+        var id = Process.GetCurrentProcess().SessionId;
+
+        _pipeServer = new PipeServer();
+        _pipeServer.Create(@"_pipename_" + id);
+
+        var recvTask = _pipeServer.StartAsync(data =>
         {
-            this.Title = "Server.";
-
-            // 複数ユーザーがログインしているときに、全く同じ名前のパイプを作って衝突しないようにセッションIDをパイプ名に付ける
-            var id = Process.GetCurrentProcess().SessionId;
-
-            if (_pipeServer is not null)
-                return;
-
-            _pipeServer = new PipeServer();
-
-            _pipeServer.Create(@"_pipename_" + id);
-
-            var recvTask = _pipeServer.StartAsync(async data =>
+            // クライアントから受信した文言
+            this.Dispatcher.Invoke(async () =>
             {
-                // 応答を送信
-                await _pipeServer.SendString("Ack");
-
-                // クライアントから受信した文言
-                this.Dispatcher.Invoke(() => { DataList.Items.Add(data); });
-            });
-
-            // 受信スレッドは、dispose時にキャンセルされる
-            recvTask.ContinueWith(task =>
-            {
-                Debug.WriteLine($"task.Status = {task.Status}" ); // →status＝Cancelのはず
-                if (_pipeServer != null)
+                if (ResponseCheck.IsChecked == true)
                 {
-                    _pipeServer.Dispose();
-                    _pipeServer = null;
+                    // 応答を送信
+                    await _pipeServer.SendString("Ack");
                 }
+
+                DataList.Items.Insert(0, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss") + " " + data);                 
             });
+        });
+
+        // 受信スレッドは、dispose時にキャンセルされる
+        recvTask.ContinueWith(task =>
+        {
+            Debug.WriteLine($"task.Status = {task.Status}" ); // →status＝Cancelのはず
+        });
+    }
+
+    // サーバー終了
+    private void Button_Click_3(object sender, RoutedEventArgs e)
+    {
+        _pipeServer?.Dispose();
+        _pipeServer = null;
+    }
+
+    // クライアントを作成
+    private async void Button_Click_2(object sender, RoutedEventArgs e)
+    {
+        this.Title = "Client.";
+
+        var id = Process.GetCurrentProcess().SessionId;
+
+        _pipeClient = new PipeClient();
+        await _pipeClient.Create(@"_pipename_" + id);
+    }
+
+    // クライアントで送信
+    private void Button_Click_1(object sender, RoutedEventArgs e)
+    {
+        if (_pipeClient is null)
+        {
+            Debug.WriteLine($"パイプクライアントを作成してください。");
+            return;
         }
 
-        // サーバー終了
-        private void Button_Click_3(object sender, RoutedEventArgs e)
+        var send = SendData.Text;
+        _ = _pipeClient.SendAsync(send, (response) =>
         {
-            _pipeServer?.Dispose();
+            // サーバーからの応答文言
+            this.Dispatcher.Invoke(() => {
+                DataList.Items.Insert(0, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss") + " " + response);
+            });
+        });
+    }
+
+    // クライアント終了
+    private void Button_Click_4(object sender, RoutedEventArgs e)
+    {
+        if (_pipeClient is null)
+        {
+            Debug.WriteLine($"すでにパイプクライアントは破棄されています。");
+            return;
+        }
+
+        _pipeClient?.Dispose();
+        _pipeClient = null;
+    }
+
+    private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (_pipeServer != null)
+        {
+            _pipeServer.Dispose();
             _pipeServer = null;
         }
-
-        // クライアントを作成
-        private async void Button_Click_2(object sender, RoutedEventArgs e)
+        if (_pipeClient != null)
         {
-            this.Title = "Client.";
-
-            var id = Process.GetCurrentProcess().SessionId;
-
-            if (_pipeClient is not null)
-                return;
-
-            _pipeClient = new PipeClient();
-
-            await _pipeClient.Create(@"_pipename_" + id);
-        }
-
-        // クライアントで送信
-        private void Button_Click_1(object sender, RoutedEventArgs e)
-        {
-            var send = SendData.Text;
-            _ = _pipeClient.SendAsync(send, (response) =>
-            {
-                // サーバーからの応答文言
-                this.Dispatcher.Invoke(() => { DataList.Items.Add(response); });
-            });
-        }
-
-        // クライアント終了
-        private void Button_Click_4(object sender, RoutedEventArgs e)
-        {
-            _pipeClient?.Dispose();
+            _pipeClient.Dispose();
             _pipeClient = null;
-        }
-
-        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
-        {
-            if (_pipeServer != null)
-            {
-                _pipeServer.Dispose();
-                _pipeServer = null;
-            }
-            if (_pipeClient != null)
-            {
-                _pipeClient.Dispose();
-                _pipeClient = null;
-            }
         }
     }
 }
