@@ -1,14 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace PipeJikken;
 
-namespace PipeJikken
+public interface IPipeServer
 {
-    public interface IPipeServer
-    {
-        void Create(string pipeName);
-        Task StartAsync(Action<string> onRecv, CancellationToken ct = default);
-    }
+    void Create(string pipeName);
+    Task StartAsync(Action<string> onRecv, CancellationToken ct = default);
 }
