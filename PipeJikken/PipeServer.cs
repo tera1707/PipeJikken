@@ -63,11 +63,20 @@ namespace PipeJikken
                                 if (message == null)
                                 {
                                     // nullの場合は、接続がクライアントから切られた
-
                                     ConsoleWriteLine("クライアントから切断されました。");
-                                    pipeServer!.Disconnect();
-                                    ConsoleWriteLine("パイプを切断しました。再接続待ちに戻ります。");
-                                    break;
+
+                                    if (pipeServer is null)
+                                    {
+                                        ConsoleWriteLine("pipeServerがnull：受信待ち中にDisposeされた場合");
+                                        throw new OperationCanceledException("pipeServerがnull：受信待ち中にDisposeされた場合");
+                                    }
+
+                                    if (pipeServer.IsConnected)
+                                    {
+                                        pipeServer.Disconnect();
+                                        ConsoleWriteLine("クライアントから切断されました。再接続待ちに戻ります。");
+                                        break;
+                                    }
                                 }
 
                                 // 受信時処理を実行
@@ -149,18 +158,9 @@ namespace PipeJikken
                     pipeServer = null;
                 }
 
-                // TODO: アンマネージド リソース (アンマネージド オブジェクト) を解放し、ファイナライザーをオーバーライドします
-                // TODO: 大きなフィールドを null に設定します
                 disposedValue = true;
             }
         }
-
-        // // TODO: 'Dispose(bool disposing)' にアンマネージド リソースを解放するコードが含まれる場合にのみ、ファイナライザーをオーバーライドします
-        // ~PipeConnect()
-        // {
-        //     // このコードを変更しないでください。クリーンアップ コードを 'Dispose(bool disposing)' メソッドに記述します
-        //     Dispose(disposing: false);
-        // }
 
         public void Dispose()
         {

@@ -27,22 +27,26 @@ namespace PipeJikkenWPF
         PipeServer? _pipeServer;
         PipeClient? _pipeClient;
 
-
         public MainWindow()
         {
             InitializeComponent();
-
-            _pipeServer = new PipeServer();
         }
 
         // サーバー起動
         private void Button_Click(object sender, RoutedEventArgs e)
         {
+            if (_pipeServer is not null)
+            {
+                Debug.WriteLine($"すでにパイプサーバーが作成されています。");
+                return;
+            }
+
             this.Title = "Server.";
 
             // 複数ユーザーがログインしているときに、全く同じ名前のパイプを作って衝突しないようにセッションIDをパイプ名に付ける
             var id = Process.GetCurrentProcess().SessionId;
 
+            _pipeServer = new PipeServer();
             _pipeServer.Create(@"_pipename_" + id);
 
             var recvTask = _pipeServer.StartAsync(data =>
