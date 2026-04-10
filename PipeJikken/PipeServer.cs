@@ -150,10 +150,15 @@ public class PipeServer : IDisposable, IPipeServer
 
             if (pipeServer is not null)
             {
-                streamWriter?.Dispose();
+                if (pipeServer.IsConnected)
+                {
+                    streamWriter?.Dispose();
+                    streamReader?.Dispose();
+                    //pipeServer.Disconnect();
+                }
                 streamWriter = null;
-                streamReader?.Dispose();
                 streamReader = null;
+
                 pipeServer.Dispose();
                 pipeServer = null;
             }
