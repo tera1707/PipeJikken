@@ -7,20 +7,26 @@
         mc:Ignorable="d"
         Title="MainWindow" Height="450" Width="800"
         Closing="Window_Closing">
-    <StackPanel>
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        
+        <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center">
             <Button Content="サーバー起動" Click="Button_Click" Width="300"/>
             <Button Content="サーバー終了" Click="Button_Click_3" Width="300"/>
             <CheckBox Name="ResponseCheck" Content="Response" IsChecked="True"/>
         </StackPanel>
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center">
             <TextBox x:Name="SendData" Text="SoushinData" Width="300"/>
             <Button Content="クライアント作成" Click="Button_Click_2" />
             <Button Content="クライアントで送信" Click="Button_Click_1" />
             <Button Content="クライアント終了" Click="Button_Click_4" />
         </StackPanel>
 
-        <ListBox x:Name="DataList"/>
-    </StackPanel>
+        <ListBox Grid.Row="2" x:Name="DataList"/>
+    </Grid>
 </Window>

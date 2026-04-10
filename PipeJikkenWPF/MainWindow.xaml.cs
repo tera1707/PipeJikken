@@ -3,6 +3,7 @@ using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Markup;
 
 // ■使い方
 // 
@@ -60,7 +61,7 @@ public partial class MainWindow : Window
                     await _pipeServer.SendString("Ack");
                 }
 
-                DataList.Items.Add(data);                 
+                DataList.Items.Insert(0, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss") + " " + data);                 
             });
         });
 
@@ -102,7 +103,9 @@ public partial class MainWindow : Window
         _ = _pipeClient.SendAsync(send, (response) =>
         {
             // サーバーからの応答文言
-            this.Dispatcher.Invoke(() => { DataList.Items.Add(response); });
+            this.Dispatcher.Invoke(() => {
+                DataList.Items.Insert(0, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss") + " " + response);
+            });
         });
     }
 
