@@ -39,41 +39,57 @@ namespace PipeJikken
 
             return Task.Run(async () =>
             {
-                // クライアントからの接続を待つ
-                await pipeServer!.WaitForConnectionAsync(combinedCts.Token);
-                ConsoleWriteLine("クライアントに接続されました。");
-
+                // 接続待ちループ
                 while (true)
                 {
                     try
                     {
-                        // クライアントからのメッセージを受け取る
-                        ConsoleWriteLine("受信待ち開始");
-                        var message = await RecvString();
+                        ConsoleWriteLine("接続待ち開始");
 
-                        if (message == null)
+                        // クライアントからの接続を待つ
+                        // サーバー破棄(Dispose)時に、キャンセルされて接続待ちループを抜ける
+                        await pipeServer!.WaitForConnectionAsync(combinedCts.Token);
+                        ConsoleWriteLine("クライアントに接続されました。");
+
+                        // 受信待ちループ
+                        while (true)
                         {
-                            // nullの場合は、接続がクライアントから切られた
-                            // →一度接続を切る
-                            streamWriter?.Dispose();
-                            streamWriter = null;
-                            streamReader?.Dispose();
-                            streamReader = null;
-                            pipeServer?.Dispose();
-                            pipeServer = null;
+                            try
+                            {
+                                // クライアントからのメッセージを受け取る
+                                ConsoleWriteLine("受信待ち開始");
+                                var message = await RecvString();
 
-                            ConsoleWriteLine("クライアントから切断されました。");
-                            throw new TaskCanceledException("クライアントから切断されました。");
+                                if (message == null)
+                                {
+                                    // nullの場合は、接続がクライアントから切られた
+
+                                    ConsoleWriteLine("クライアントから切断されました。");
+                                    pipeServer!.Disconnect();
+                                    ConsoleWriteLine("パイプを切断しました。再接続待ちに戻ります。");
+                                    break;
+                                }
+
+                                // 受信時処理を実行
+                                onRecv?.Invoke(message);
+                            }
+                            finally
+                            {
+                                ConsoleWriteLine("受信完了");
+                            }
                         }
 
-                        // 受信時処理を実行
-                        onRecv?.Invoke(message);
                     }
-                    finally
+                    catch (Exception ex)
                     {
-                        ConsoleWriteLine("受信完了");
+                        // デバッグ用trycatch
+                        ConsoleWriteLine($"例外発生: {ex.Message}");
+                        throw;
                     }
                 }
+            }).ContinueWith( (a) =>
+            {
+                ConsoleWriteLine("接続待ち終了");
             });
         }
 

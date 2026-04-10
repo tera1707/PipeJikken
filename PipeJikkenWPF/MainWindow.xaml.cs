@@ -30,8 +30,8 @@ namespace PipeJikkenWPF
         public MainWindow()
         {
             InitializeComponent();
+
             _pipeServer = new PipeServer();
-            _pipeClient = new PipeClient();
         }
 
         // サーバー起動
@@ -80,6 +80,7 @@ namespace PipeJikkenWPF
 
             var id = Process.GetCurrentProcess().SessionId;
 
+            _pipeClient = new PipeClient();
             await _pipeClient.Create(@"_pipename_" + id);
         }
 
