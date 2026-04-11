@@ -1,0 +1,1 @@
+powershell.exe -Command "cat c:\mylog.log -Wait"
