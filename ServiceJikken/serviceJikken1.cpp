@@ -83,35 +83,6 @@ DWORD WINAPI SvcCtrlHandler(DWORD dwControl, DWORD dwEventType, LPVOID lpEventDa
     case SERVICE_CONTROL_INTERROGATE:
         return NO_ERROR;
 
-    case SERVICE_CONTROL_POWEREVENT:
-        OutputLogToCChokka(L" " + std::to_wstring(dwEventType));
-
-        switch (dwEventType)
-        {
-        case PBT_POWERSETTINGCHANGE:
-        {
-            auto data = reinterpret_cast<POWERBROADCAST_SETTING*>(lpEventData);
-
-            OutputLogToCChokka(L"  " + std::to_wstring(data->PowerSetting.Data1));
-
-            if (data->PowerSetting == GUID_BATTERY_PERCENTAGE_REMAINING)
-            {
-                auto bat = reinterpret_cast<DWORD*>(data->Data);
-                auto log = std::wstring(L"   * battery remain is " + std::to_wstring(*bat));
-                OutputLogToCChokka(log.c_str());
-            }
-            else if (data->PowerSetting == GUID_ACDC_POWER_SOURCE)
-            {
-                auto src = reinterpret_cast<DWORD*>(data->Data);
-                std::wstring srcStr = GetMapValueOrDefault(PowSrcMap, *src, L"UNKNOWN_POWER_SOURCE");
-                auto log = std::wstring(L"   * power source is " + srcStr);
-                OutputLogToCChokka(log.c_str());
-            }
-            break;
-        }
-        }
-        break;
-
     default:
         break;
     }
@@ -131,21 +102,6 @@ VOID WINAPI SvcMain(DWORD dwArgc, LPTSTR* lpszArgv)
         OutputLogToCChokka((LPTSTR)(TEXT("RegisterServiceCtrlHandler fail...")));
         return;
     }
-
-    // 以下で、デフォルトでは受けないServiceControlを登録する
-    // ここではGUID_BATTERY_PERCENTAGE_REMAINING(バッテリの残量変化)を受けられるようにする
-
-    // バッテリーの残量の変化のServiceControlが来るようにする
-    auto ret = RegisterPowerSettingNotification(gSvcStatusHandle, &GUID_BATTERY_PERCENTAGE_REMAINING, DEVICE_NOTIFY_SERVICE_HANDLE);
-    if (!ret)
-        return;
-
-    // 電源の変化(AC⇒DC)
-    ret = RegisterPowerSettingNotification(gSvcStatusHandle, &GUID_ACDC_POWER_SOURCE, DEVICE_NOTIFY_SERVICE_HANDLE);
-    if (!ret)
-        return;
-
-    // ----------------------
 
     // どういうサービスにするか設定
     gSvcStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
@@ -219,31 +175,28 @@ VOID SvcInit(DWORD dwArgc, LPTSTR* lpszArgv)
 
 VOID SvcMainLoop(DWORD dwArgc, LPTSTR* lpszArgv)
 {
-    while (1)
+    // やりたい処理をここでサービス終了までやり続ける
+    WaitForSingleObject(ghSvcStopEvent, INFINITE);
+
+    // パイプサーバースレッドの停止を通知
+    if (ghPipeStopEvent != NULL)
     {
-        // やりたい処理をここでサービス終了までやり続ける
-        WaitForSingleObject(ghSvcStopEvent, INFINITE);
-
-        // パイプサーバースレッドの停止を通知
-        if (ghPipeStopEvent != NULL)
-        {
-            SetEvent(ghPipeStopEvent);
-        }
-
-        // パイプサーバースレッドの終了を待つ
-        if (ghPipeThread != NULL)
-        {
-            WaitForSingleObject(ghPipeThread, 50000);
-            CloseHandle(ghPipeThread);
-        }
-
-        if (ghPipeStopEvent != NULL)
-        {
-            CloseHandle(ghPipeStopEvent);
-        }
-
-        return;
+        SetEvent(ghPipeStopEvent);
     }
+
+    // パイプサーバースレッドの終了を待つ
+    if (ghPipeThread != NULL)
+    {
+        WaitForSingleObject(ghPipeThread, 50000);
+        CloseHandle(ghPipeThread);
+    }
+
+    if (ghPipeStopEvent != NULL)
+    {
+        CloseHandle(ghPipeStopEvent);
+    }
+
+    return;
 }
 
 VOID SvcEnd(DWORD dwArgc, LPTSTR* lpszArgv)
