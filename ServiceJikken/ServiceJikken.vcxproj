@@ -94,6 +94,8 @@
       <DeploymentContent>false</DeploymentContent>
       <FileType>Document</FileType>
     </None>
+    <None Include="..\StartService.bat" />
+    <None Include="..\StopService.bat" />
     <None Include="..\TailLog.bat" />
     <None Include="..\UnInstallMyServiceOnTargetPC.bat" />
   </ItemGroup>

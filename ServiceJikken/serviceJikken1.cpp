@@ -159,6 +159,8 @@ VOID WINAPI SvcMain(DWORD dwArgc, LPTSTR* lpszArgv)
 
     // サービスとしての主たる処理を行う
     SvcMainLoop(dwArgc, lpszArgv);
+
+    SvcEnd(0, NULL);
 }
 
 VOID SvcInit(DWORD dwArgc, LPTSTR* lpszArgv)
@@ -231,7 +233,7 @@ VOID SvcMainLoop(DWORD dwArgc, LPTSTR* lpszArgv)
         // パイプサーバースレッドの終了を待つ
         if (ghPipeThread != NULL)
         {
-            WaitForSingleObject(ghPipeThread, 5000);
+            WaitForSingleObject(ghPipeThread, 50000);
             CloseHandle(ghPipeThread);
         }
 
@@ -303,39 +305,72 @@ DWORD WINAPI PipeServerThread(LPVOID lpParam)
             continue;
         }
 
-        // 名前付きパイプを作成
+        // オーバーラップI/O用のイベントを作成
+        OVERLAPPED overlapped = { 0 };
+        overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+        if (overlapped.hEvent == NULL)
+        {
+            OutputLogToCChokka(L"Failed to create overlapped event");
+            Sleep(1000);
+            continue;
+        }
+
+        // 名前付きパイプを作成（FILE_FLAG_OVERLAPPEDを追加）
         HANDLE hPipe = CreateNamedPipe(
             PIPE_NAME,
-            PIPE_ACCESS_DUPLEX,
+            PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
             PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
             PIPE_UNLIMITED_INSTANCES,
             PIPE_BUFFER_SIZE,
             PIPE_BUFFER_SIZE,
             0,
-            &sa);  // セキュリティ属性を指定
+            &sa);
 
         if (hPipe == INVALID_HANDLE_VALUE)
         {
             OutputLogToCChokka(L"Failed to create named pipe. Error: " + std::to_wstring(GetLastError()));
+            CloseHandle(overlapped.hEvent);
             Sleep(1000);
             continue;
         }
 
         OutputLogToCChokka(L"Waiting for client connection...");
 
-        // クライアントの接続を待機
-        BOOL connected = ConnectNamedPipe(hPipe, NULL) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
+        // 非同期でクライアントの接続を待機
+        BOOL connected = ConnectNamedPipe(hPipe, &overlapped);
+        DWORD lastError = GetLastError();
 
-        if (connected)
+        if (!connected && lastError == ERROR_IO_PENDING)
         {
+            // 2つのイベントを待つ：接続完了 または サービス停止
+            HANDLE events[2] = { overlapped.hEvent, ghPipeStopEvent };
+            DWORD waitResult = WaitForMultipleObjects(2, events, FALSE, INFINITE);
+
+            if (waitResult == WAIT_OBJECT_0)
+            {
+                // 接続完了
+                OutputLogToCChokka(L"Client connected");
+                HandlePipeClient(hPipe);
+            }
+            else if (waitResult == WAIT_OBJECT_0 + 1)
+            {
+                // サービス停止イベント
+                OutputLogToCChokka(L"Stop event signaled during connection wait");
+                CancelIo(hPipe);
+            }
+        }
+        else if (connected || lastError == ERROR_PIPE_CONNECTED)
+        {
+            // すでに接続済み
             OutputLogToCChokka(L"Client connected");
             HandlePipeClient(hPipe);
         }
         else
         {
-            OutputLogToCChokka(L"ConnectNamedPipe failed. Error: " + std::to_wstring(GetLastError()));
+            OutputLogToCChokka(L"ConnectNamedPipe failed. Error: " + std::to_wstring(lastError));
         }
 
+        CloseHandle(overlapped.hEvent);
         CloseHandle(hPipe);
     }
 
@@ -353,15 +388,59 @@ VOID HandlePipeClient(HANDLE hPipe)
     {
         ZeroMemory(buffer, sizeof(buffer));
 
-        // クライアントからメッセージを受信（UTF-8）
+        // オーバーラップI/O用の構造体を準備
+        OVERLAPPED readOverlapped = { 0 };
+        readOverlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+        if (readOverlapped.hEvent == NULL)
+        {
+            OutputLogToCChokka(L"Failed to create read event");
+            break;
+        }
+
+        // 非同期でクライアントからメッセージを受信（UTF-8）
         BOOL success = ReadFile(
             hPipe,
             buffer,
             sizeof(buffer) - 1,
             &bytesRead,
-            NULL);
+            &readOverlapped);
 
-        if (!success || bytesRead == 0)
+        DWORD lastError = GetLastError();
+
+        if (!success && lastError == ERROR_IO_PENDING)
+        {
+            // 2つのイベントを待つ：読み取り完了 または サービス停止
+            HANDLE events[2] = { readOverlapped.hEvent, ghPipeStopEvent };
+            DWORD waitResult = WaitForMultipleObjects(2, events, FALSE, INFINITE);
+
+            if (waitResult == WAIT_OBJECT_0)
+            {
+                // 読み取り完了 - 実際に読み取ったバイト数を取得
+                if (!GetOverlappedResult(hPipe, &readOverlapped, &bytesRead, FALSE))
+                {
+                    DWORD error = GetLastError();
+                    if (error == ERROR_BROKEN_PIPE)
+                    {
+                        OutputLogToCChokka(L"Client disconnected");
+                    }
+                    else
+                    {
+                        OutputLogToCChokka(L"GetOverlappedResult failed. Error: " + std::to_wstring(error));
+                    }
+                    CloseHandle(readOverlapped.hEvent);
+                    break;
+                }
+            }
+            else if (waitResult == WAIT_OBJECT_0 + 1)
+            {
+                // サービス停止イベント
+                OutputLogToCChokka(L"Stop event signaled during read wait");
+                CancelIo(hPipe);
+                CloseHandle(readOverlapped.hEvent);
+                break;
+            }
+        }
+        else if (!success || bytesRead == 0)
         {
             if (GetLastError() == ERROR_BROKEN_PIPE)
             {
@@ -371,6 +450,15 @@ VOID HandlePipeClient(HANDLE hPipe)
             {
                 OutputLogToCChokka(L"ReadFile failed. Error: " + std::to_wstring(GetLastError()));
             }
+            CloseHandle(readOverlapped.hEvent);
+            break;
+        }
+
+        CloseHandle(readOverlapped.hEvent);
+
+        if (bytesRead == 0)
+        {
+            OutputLogToCChokka(L"Client disconnected (0 bytes read)");
             break;
         }
 
@@ -417,20 +505,53 @@ VOID HandlePipeClient(HANDLE hPipe)
         char utf8Buffer[PIPE_BUFFER_SIZE] = { 0 };
         WideCharToMultiByte(CP_UTF8, 0, response.c_str(), -1, utf8Buffer, utf8Size, NULL, NULL);
 
+        // 非同期で書き込み
+        OVERLAPPED writeOverlapped = { 0 };
+        writeOverlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+        if (writeOverlapped.hEvent == NULL)
+        {
+            OutputLogToCChokka(L"Failed to create write event");
+            break;
+        }
+
         DWORD bytesWritten = 0;
         success = WriteFile(
             hPipe,
             utf8Buffer,
             utf8Size - 1,  // NULL終端を除く
             &bytesWritten,
-            NULL);
+            &writeOverlapped);
 
-        if (!success)
+        lastError = GetLastError();
+
+        if (!success && lastError == ERROR_IO_PENDING)
+        {
+            // 書き込み完了を待つ
+            HANDLE writeEvents[2] = { writeOverlapped.hEvent, ghPipeStopEvent };
+            DWORD writeWaitResult = WaitForMultipleObjects(2, writeEvents, FALSE, INFINITE);
+
+            if (writeWaitResult == WAIT_OBJECT_0)
+            {
+                // 書き込み完了
+                GetOverlappedResult(hPipe, &writeOverlapped, &bytesWritten, FALSE);
+            }
+            else if (writeWaitResult == WAIT_OBJECT_0 + 1)
+            {
+                // サービス停止イベント
+                OutputLogToCChokka(L"Stop event signaled during write wait");
+                CancelIo(hPipe);
+                CloseHandle(writeOverlapped.hEvent);
+                break;
+            }
+        }
+        else if (!success)
         {
             OutputLogToCChokka(L"WriteFile failed. Error: " + std::to_wstring(GetLastError()));
+            CloseHandle(writeOverlapped.hEvent);
             break;
         }
 
+        CloseHandle(writeOverlapped.hEvent);
         FlushFileBuffers(hPipe);
         OutputLogToCChokka(L"Response sent to client");
     }

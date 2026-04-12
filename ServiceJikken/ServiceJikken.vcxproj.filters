@@ -40,5 +40,11 @@
     <None Include="..\TailLog.bat">
       <Filter>リソース ファイル</Filter>
     </None>
+    <None Include="..\StartService.bat">
+      <Filter>リソース ファイル</Filter>
+    </None>
+    <None Include="..\StopService.bat">
+      <Filter>リソース ファイル</Filter>
+    </None>
   </ItemGroup>
 </Project>
