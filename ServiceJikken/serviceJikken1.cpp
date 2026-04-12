@@ -269,15 +269,7 @@ DWORD WINAPI PipeServerThread(LPVOID lpParam)
         }
 
         // 名前付きパイプを作成（FILE_FLAG_OVERLAPPEDを追加）
-        HANDLE hPipe = CreateNamedPipe(
-            PIPE_NAME,
-            PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-            PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
-            PIPE_UNLIMITED_INSTANCES,
-            PIPE_BUFFER_SIZE,
-            PIPE_BUFFER_SIZE,
-            0,
-            &sa);
+        HANDLE hPipe = CreateNamedPipe(PIPE_NAME, PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, PIPE_BUFFER_SIZE, PIPE_BUFFER_SIZE, 0, &sa);
 
         if (hPipe == INVALID_HANDLE_VALUE)
         {
@@ -351,12 +343,7 @@ VOID HandlePipeClient(HANDLE hPipe)
         }
 
         // 非同期でクライアントからメッセージを受信（UTF-8）
-        BOOL success = ReadFile(
-            hPipe,
-            buffer,
-            sizeof(buffer) - 1,
-            &bytesRead,
-            &readOverlapped);
+        BOOL success = ReadFile(hPipe, buffer, sizeof(buffer) - 1, &bytesRead, &readOverlapped);
 
         DWORD lastError = GetLastError();
 
@@ -415,16 +402,6 @@ VOID HandlePipeClient(HANDLE hPipe)
             break;
         }
 
-        // デバッグ：受信したバイト数とバイナリデータを出力
-        std::wstring hexData = L"Received " + std::to_wstring(bytesRead) + L" bytes: ";
-        for (DWORD i = 0; i < bytesRead && i < 100; i++)  // 最初の100バイトのみ
-        {
-            wchar_t hex[4];
-            swprintf_s(hex, L"%02X ", (unsigned char)buffer[i]);
-            hexData += hex;
-        }
-        OutputLogToCChokka(hexData);
-
         // UTF-8からUTF-16へ変換
         int wideSize = MultiByteToWideChar(CP_UTF8, 0, buffer, bytesRead, NULL, 0);
         if (wideSize == 0)
@@ -468,12 +445,7 @@ VOID HandlePipeClient(HANDLE hPipe)
         }
 
         DWORD bytesWritten = 0;
-        success = WriteFile(
-            hPipe,
-            utf8Buffer,
-            utf8Size - 1,  // NULL終端を除く
-            &bytesWritten,
-            &writeOverlapped);
+        success = WriteFile(hPipe, utf8Buffer, utf8Size - 1, &bytesWritten, &writeOverlapped);
 
         lastError = GetLastError();
 
