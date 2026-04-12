@@ -127,13 +127,13 @@ VOID SvcInit(DWORD dwArgc, LPTSTR* lpszArgv)
     // (もし初期化処理でエラーになったりしたときは、そこでSERVICE_STOPPEDを載せてReportSvcStatus()を呼ぶこと)
 
     // DEBUG用のPending処理()時間のかかる初期化処理を想定
-    int ctr = 0;
-    for (int i = 0; i < 5; i++)
-    {
-        OutputLogToCChokka(L"Pending.." + std::to_wstring(gSvcStatus.dwCheckPoint));
-        ReportSvcStatus(SERVICE_START_PENDING, NO_ERROR, 1000 * 2);
-        Sleep(1000);
-    }
+    //int ctr = 0;
+    //for (int i = 0; i < 5; i++)
+    //{
+    //    OutputLogToCChokka(L"Pending.." + std::to_wstring(gSvcStatus.dwCheckPoint));
+    //    ReportSvcStatus(SERVICE_START_PENDING, NO_ERROR, 1000 * 2);
+    //    Sleep(1000);
+    //}
 
     // サービス終了時に発火させるイベント(SvcMainLoopのループを抜けさせるためのイベント)
     // stopのServiceContorlを受けたらこういったイベント等を使ってループを抜け、処理を終了させる
